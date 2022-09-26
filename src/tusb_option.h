@@ -107,6 +107,8 @@ typedef int make_iso_compilers_happy;
 #define OPT_MCU_NUC126            801
 #define OPT_MCU_NUC120            802
 #define OPT_MCU_NUC505            803
+#define OPT_MCU_M487              804
+#define OPT_MCU_M484              805
 
 // Espressif
 #define OPT_MCU_ESP32S2           900 ///< Espressif ESP32-S2

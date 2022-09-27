@@ -1,7 +1,9 @@
 #include "tusb_option.h"
-#if CFG_TUD_ENABLED && (CFG_TUSB_MCU == (OPT_MCU_M487 || OPT_MCU_M484)
-#include "device/dcd.h"
+#if CFG_TUD_ENABLED && (CFG_TUSB_MCU == OPT_MCU_M487) || (CFG_TUSB_MCU == OPT_MCU_M484)
 #include "NuMicro.h"
+#include "hsusbd.h"
+#include "device/dcd.h"
+
 
 enum usb_port
 {
@@ -20,8 +22,8 @@ enum usb_port
 #define USE_DMA     0
 
 /* rather important info unfortunately not provided by device include files */
-#define USBD_BUF_SIZE          2048 /* how much USB buffer space there is */
-#define USBD_MAX_DMA_LEN     0x1000 /* max bytes that can be DMAed at one time */
+#define HSUSBD_BUF_SIZE          2048 /* how much USB buffer space there is */
+#define HSUSBD_MAX_DMA_LEN     0x1000 /* max bytes that can be DMAed at one time */
 
 //m484/m487 has 12 EP on USB-HS
 #define CEP     0xfful    /*!< Control Endpoint  \hideinitializer */
@@ -40,6 +42,7 @@ enum usb_port
 
 enum ep_enum
 {
+    PERIPH_CEP = 0xfful,
   PERIPH_EPA = 0,
   PERIPH_EPB = 1,
   PERIPH_EPC = 2,
@@ -107,6 +110,7 @@ static void usb_attach(uint8_t rhport)
 {
     switch(rhport) {
     case USB_HS:
+        printf("enable HS\n");
         HSUSBD->PHYCTL |= HSUSBD_PHYCTL_DPPUEN_Msk; //HSUSBD_CLR_SE0()
         break;
     case USB_FS:
@@ -122,6 +126,7 @@ static void usb_detach(uint8_t rhport)
 {
     switch(rhport) {
     case USB_HS:
+        printf("disable HS\n");
         HSUSBD->PHYCTL &= ~HSUSBD_PHYCTL_DPPUEN_Msk; //  HSUSBD_SET_SE0()
         break;
     case USB_FS:
@@ -143,14 +148,14 @@ static void usb_control_send_zlp(void)
 /////////////////////////////////////
 
 
-/* map 8-bit ep_addr into peripheral endpoint index (PERIPH_EPA...) */
+/* map 8-bit ep_addr into peripheral endpoint index (PERIPH_CEP...) */
 static HSUSBD_EP_T *ep_entry(uint8_t ep_addr, bool add)
 {
   HSUSBD_EP_T *ep;
   enum ep_enum ep_index;
   struct xfer_ctl_t *xfer;
 
-  for (ep_index = PERIPH_EPA, xfer = &xfer_table[PERIPH_EPA], ep = HSUSBD->EP;
+  for (ep_index = PERIPH_CEP, xfer = &xfer_table[PERIPH_CEP], ep = HSUSBD->EP;
        ep_index < PERIPH_MAX_EP;
        ep_index++, xfer++, ep++)
   {
@@ -172,7 +177,7 @@ static HSUSBD_EP_T *ep_entry(uint8_t ep_addr, bool add)
 
 
 /* perform a non-control IN endpoint transfer; this is called by the ISR  */
-static void dcd_userEP_in_xfer(struct xfer_ctl_t *xfer, USBD_EP_T *ep)
+static void dcd_userEP_in_xfer(struct xfer_ctl_t *xfer, HSUSBD_EP_T *ep)
 {
   uint16_t const bytes_now = tu_min16(xfer->in_remaining_bytes, xfer->max_packet_size);
 
@@ -221,12 +226,11 @@ static void bus_reset(uint8_t rhport)
 
   HSUSBD_SwReset();
   HSUSBD_ResetDMA();
-  HSUSBD->EP[EPA].EPRSPCTL = HSUSBD_EPRSPCTL_FLUSH_Msk;
+  HSUSBD->EP[CEP].EPRSPCTL = HSUSBD_EPRSPCTL_FLUSH_Msk;
 
-  /* EPA ==> Interrupt IN endpoint, address 1 */
-    HSUSBD_SetEpBufAddr(EPA, EPA_BUF_BASE, EPA_BUF_LEN);
-    HSUSBD_SET_MAX_PAYLOAD(EPA, EPA_MAX_PKT_SIZE);
-    HSUSBD_ConfigEp(EPA, INT_IN_EP_NUM, HSUSBD_EP_CFG_TYPE_INT, HSUSBD_EP_CFG_DIR_IN);
+  /* allocate the default EP0 endpoints */
+  HSUSBD->CEPBUFST = 0;
+  HSUSBD->CEPBUFEND = 0 + CFG_TUD_ENDPOINT0_SIZE - 1;
 
   /* USB RAM beyond what we've allocated above is available to the user */
   bufseg_addr = CFG_TUD_ENDPOINT0_SIZE;
@@ -245,7 +249,7 @@ static void service_dma(void)
   struct xfer_ctl_t *xfer;
   USBD_EP_T *ep;
 
-  for (ep_index = PERIPH_EPA, xfer = &xfer_table[PERIPH_EPA], ep = &HSUSBD->EP[PERIPH_EPA]; ep_index < PERIPH_MAX_EP; ep_index++, xfer++, ep++)
+  for (ep_index = PERIPH_CEP, xfer = &xfer_table[PERIPH_CEP], ep = &HSUSBD->EP[PERIPH_CEP]; ep_index < PERIPH_MAX_EP; ep_index++, xfer++, ep++)
   {
     uint16_t const available_bytes = ep->EPDATCNT & HSUSBD_EPDATCNT_DATCNT_Msk;
 
@@ -271,7 +275,7 @@ static void service_dma(void)
 
 /* centralized location for USBD interrupt enable bit masks */
 static const uint32_t enabled_irqs = HSUSBD_GINTEN_USBIEN_Msk | \
-  HSUSBD_GINTEN_EPAIEN_Msk | HSUSBD_GINTEN_EPBIEN_Msk | HSUSBD_GINTEN_EPCIEN_Msk | HSUSBD_GINTEN_EPDIEN_Msk | HSUSBD_GINTEN_EPEIEN_Msk | HSUSBD_GINTEN_EPFIEN_Msk | \
+  HSUSBD_GINTEN_CEPIEN_Msk | HSUSBD_GINTEN_EPBIEN_Msk | HSUSBD_GINTEN_EPCIEN_Msk | HSUSBD_GINTEN_EPDIEN_Msk | HSUSBD_GINTEN_EPEIEN_Msk | HSUSBD_GINTEN_EPFIEN_Msk | \
   HSUSBD_GINTEN_EPGIEN_Msk | HSUSBD_GINTEN_EPHIEN_Msk | HSUSBD_GINTEN_EPIIEN_Msk | HSUSBD_GINTEN_EPJIEN_Msk | HSUSBD_GINTEN_EPKIEN_Msk | HSUSBD_GINTEN_EPLIEN_Msk | \
   HSUSBD_GINTEN_CEPIEN_Msk;
 
@@ -287,9 +291,9 @@ void dcd_init(uint8_t rhport)
   HSUSBD->GINTEN = enabled_irqs;
   HSUSBD->BUSINTEN = HSUSBD_BUSINTEN_RSTIEN_Msk | HSUSBD_BUSINTEN_VBUSDETIEN_Msk | HSUSBD_BUSINTEN_RESUMEIEN_Msk | HSUSBD_BUSINTEN_DMADONEIEN_Msk;
   HSUSBD->CEPINTEN = 0;
-
+  printf("bus reset \n");
   bus_reset(rhport);
-
+  printf("connect rhport %d\n", rhport);
   usb_attach(rhport);
 }
 
@@ -328,18 +332,19 @@ bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * p_endpoint_desc)
   /* mine the data for the information we need */
   int const dir = tu_edpt_dir(p_endpoint_desc->bEndpointAddress);
   int const size = tu_edpt_packet_size(p_endpoint_desc);
+
   tusb_xfer_type_t const type = p_endpoint_desc->bmAttributes.xfer;
   struct xfer_ctl_t *xfer = &xfer_table[ep - HSUSBD->EP];
 
   /* allocate buffer from USB RAM */
-  ep->EPBUFSTART = bufseg_addr;
+  ep->EPBUFST = bufseg_addr;
   bufseg_addr += size;
   ep->EPBUFEND = bufseg_addr - 1;
   TU_ASSERT(bufseg_addr <= HSUSBD_BUF_SIZE);
 
   ep->EPMPS = size;
 
-  ep->EPRSPCTL = USB_EP_RSPCTL_FLUSH | eprspctl_eptype_table[type];
+  ep->EPRSPCTL = HSUSBD_EP_RSPCTL_FLUSH | eprspctl_eptype_table[type];
 
   /* construct USB Configuration Register value and then write it */
   uint32_t cfg = (uint32_t)tu_edpt_number(p_endpoint_desc->bEndpointAddress) << HSUSBD_EPCFG_EPNUM_Pos;
@@ -555,11 +560,11 @@ void dcd_int_handler(uint8_t rhport)
     }
 
     if (bus_state & HSUSBD_BUSINTSTS_PHYCLKVLDIF_Msk)
-        HSUSBD_CLR_BUS_INT_FLAG(HSUSBD_BUSINTSTS_PHYCLKVLDIF_Msk)
+        HSUSBD_CLR_BUS_INT_FLAG(HSUSBD_BUSINTSTS_PHYCLKVLDIF_Msk);
 
     if (bus_state & HSUSBD_BUSINTSTS_VBUSDETIF_Msk)
     {
-      if (HSUSBD_IS_ATTACHED)
+      if (HSUSBD->PHYCTL & HSUSBD_PHYCTL_VBUSDET_Msk)
       {
         /* USB connect */
           HSUSBD_ENABLE_USB();
@@ -662,7 +667,7 @@ void dcd_int_handler(uint8_t rhport)
       {
         HSUSBD->FADDR = assigned_address;
 
-        for (enum ep_enum ep_index = PERIPH_EPA; ep_index < PERIPH_MAX_EP; ep_index++)
+        for (enum ep_enum ep_index = PERIPH_CEP; ep_index < PERIPH_MAX_EP; ep_index++)
         {
           if (HSUSBD->EP[ep_index].EPCFG & HSUSBD_EPCFG_EPEN_Msk) HSUSBD->EP[ep_index].EPRSPCTL = HSUSBD_EPRSPCTL_TOGGLE_Msk;
         }
@@ -680,14 +685,14 @@ void dcd_int_handler(uint8_t rhport)
     return;
   }
 
-  if (status & (HSUSBD_GINTSTS_EPAIF_Msk | HSUSBD_GINTSTS_EPBIF_Msk | HSUSBD_GINTSTS_EPCIF_Msk | HSUSBD_GINTSTS_EPDIF_Msk | HSUSBD_GINTSTS_EPEIF_Msk | HSUSBD_GINTSTS_EPFIF_Msk | HSUSBD_GINTSTS_EPGIF_Msk | HSUSBD_GINTSTS_EPHIF_Msk | HSUSBD_GINTSTS_EPIIF_Msk | HSUSBD_GINTSTS_EPJIF_Msk | HSUSBD_GINTSTS_EPKIF_Msk | HSUSBD_GINTSTS_EPLIF_Msk))
+  if (status & (HSUSBD_GINTSTS_CEPIF_Msk | HSUSBD_GINTSTS_EPBIF_Msk | HSUSBD_GINTSTS_EPCIF_Msk | HSUSBD_GINTSTS_EPDIF_Msk | HSUSBD_GINTSTS_EPEIF_Msk | HSUSBD_GINTSTS_EPFIF_Msk | HSUSBD_GINTSTS_EPGIF_Msk | HSUSBD_GINTSTS_EPHIF_Msk | HSUSBD_GINTSTS_EPIIF_Msk | HSUSBD_GINTSTS_EPJIF_Msk | HSUSBD_GINTSTS_EPKIF_Msk | HSUSBD_GINTSTS_EPLIF_Msk))
   {
-    /* service PERIPH_EPA through PERIPH_EPL */
+    /* service PERIPH_CEP through PERIPH_EPL */
     enum ep_enum ep_index;
     uint32_t mask;
     struct xfer_ctl_t *xfer;
     HSUSBD_EP_T *ep;
-    for (ep_index = PERIPH_EPA, mask = HSUSBD_GINTSTS_EPAIF_Msk, xfer = &xfer_table[PERIPH_EPA], ep = &HSUSBD->EP[PERIPH_EPA]; ep_index < PERIPH_MAX_EP; ep_index++, mask <<= 1, xfer++, ep++)
+    for (ep_index = PERIPH_CEP, mask = HSUSBD_GINTSTS_CEPIF_Msk, xfer = &xfer_table[PERIPH_CEP], ep = &HSUSBD->EP[PERIPH_CEP]; ep_index < PERIPH_MAX_EP; ep_index++, mask <<= 1, xfer++, ep++)
     {
       if(status & mask)
       {

@@ -22,7 +22,7 @@ enum usb_port
 #define USE_DMA     0
 
 /* rather important info unfortunately not provided by device include files */
-#define HSUSBD_BUF_SIZE          2048 /* how much USB buffer space there is */
+#define HSUSBD_BUF_SIZE          1024 /* how much USB buffer space there is */
 #define HSUSBD_MAX_DMA_LEN     0x1000 /* max bytes that can be DMAed at one time */
 
 //m484/m487 has 12 EP on USB-HS
@@ -42,7 +42,6 @@ enum usb_port
 
 enum ep_enum
 {
-    PERIPH_CEP = 0xfful,
   PERIPH_EPA = 0,
   PERIPH_EPB = 1,
   PERIPH_EPC = 2,
@@ -105,16 +104,19 @@ static struct
 
 static volatile struct xfer_ctl_t *current_dma_xfer;
 
-/*m48x?*/
+
 static void usb_attach(uint8_t rhport)
 {
     switch(rhport) {
     case USB_HS:
-        printf("enable HS\n");
+        //HSUSBD_ENABLE_USB();
         HSUSBD->PHYCTL |= HSUSBD_PHYCTL_DPPUEN_Msk; //HSUSBD_CLR_SE0()
+
+        //HSUSBD_CLR_SE0();
+        //NVIC_EnableIRQ(USBD20_IRQn);
         break;
     case USB_FS:
-        USBD->SE0 |= USBD_DRVSE0; // USBD_SET_SE0()
+
         break;
     default:
         break;
@@ -126,11 +128,10 @@ static void usb_detach(uint8_t rhport)
 {
     switch(rhport) {
     case USB_HS:
-        printf("disable HS\n");
         HSUSBD->PHYCTL &= ~HSUSBD_PHYCTL_DPPUEN_Msk; //  HSUSBD_SET_SE0()
         break;
     case USB_FS:
-        USBD->SE0 &= ~USBD_DRVSE0; // USBD_CLR_SE0()
+
         break;
     default:
         break;
@@ -154,8 +155,7 @@ static HSUSBD_EP_T *ep_entry(uint8_t ep_addr, bool add)
   HSUSBD_EP_T *ep;
   enum ep_enum ep_index;
   struct xfer_ctl_t *xfer;
-
-  for (ep_index = PERIPH_CEP, xfer = &xfer_table[PERIPH_CEP], ep = HSUSBD->EP;
+  for (ep_index = PERIPH_EPA, xfer = &xfer_table[PERIPH_EPA], ep = HSUSBD->EP;
        ep_index < PERIPH_MAX_EP;
        ep_index++, xfer++, ep++)
   {
@@ -183,7 +183,6 @@ static void dcd_userEP_in_xfer(struct xfer_ctl_t *xfer, HSUSBD_EP_T *ep)
 
   /* precompute what amount of data will be left */
   xfer->in_remaining_bytes -= bytes_now;
-
   /*
   if there will be no more data to send, we replace the BUFEMPTYIF EP interrupt with TXPKIF;
   that way, we alert TinyUSB as soon as this last packet has been sent
@@ -223,19 +222,26 @@ static void dcd_userEP_in_xfer(struct xfer_ctl_t *xfer, HSUSBD_EP_T *ep)
 /* called by dcd_init() as well as by the ISR during a USB bus reset */
 static void bus_reset(uint8_t rhport)
 {
+    for (enum ep_enum ep_index = PERIPH_EPA; ep_index < PERIPH_MAX_EP; ep_index++)
+        {
+            HSUSBD->EP[ep_index].EPCFG = 0;
+            xfer_table[ep_index].dma_requested = false;
+        }
 
-  HSUSBD_SwReset();
-  HSUSBD_ResetDMA();
-  HSUSBD->EP[CEP].EPRSPCTL = HSUSBD_EPRSPCTL_FLUSH_Msk;
+    HSUSBD->DMACNT = 0ul;
+    HSUSBD->DMACTL = 0x80ul;
+    HSUSBD->DMACTL = 0x00ul;
 
-  /* allocate the default EP0 endpoints */
-  HSUSBD->CEPBUFST = 0;
-  HSUSBD->CEPBUFEND = 0 + CFG_TUD_ENDPOINT0_SIZE - 1;
+    /* allocate the default EP0 endpoints */
+    HSUSBD->CEPBUFST = 0;
+    HSUSBD->CEPBUFEND = 0 + CFG_TUD_ENDPOINT0_SIZE - 1;
 
-  /* USB RAM beyond what we've allocated above is available to the user */
-  bufseg_addr = CFG_TUD_ENDPOINT0_SIZE;
+    /* USB RAM beyond what we've allocated above is available to the user */
+    bufseg_addr = CFG_TUD_ENDPOINT0_SIZE;
+    /* Reset USB device address */
+    HSUSBD->FADDR = 0;
 
-  current_dma_xfer = NULL;
+    current_dma_xfer = NULL;
 }
 
 #if USE_DMA
@@ -275,9 +281,8 @@ static void service_dma(void)
 
 /* centralized location for USBD interrupt enable bit masks */
 static const uint32_t enabled_irqs = HSUSBD_GINTEN_USBIEN_Msk | \
-  HSUSBD_GINTEN_CEPIEN_Msk | HSUSBD_GINTEN_EPBIEN_Msk | HSUSBD_GINTEN_EPCIEN_Msk | HSUSBD_GINTEN_EPDIEN_Msk | HSUSBD_GINTEN_EPEIEN_Msk | HSUSBD_GINTEN_EPFIEN_Msk | \
-  HSUSBD_GINTEN_EPGIEN_Msk | HSUSBD_GINTEN_EPHIEN_Msk | HSUSBD_GINTEN_EPIIEN_Msk | HSUSBD_GINTEN_EPJIEN_Msk | HSUSBD_GINTEN_EPKIEN_Msk | HSUSBD_GINTEN_EPLIEN_Msk | \
-  HSUSBD_GINTEN_CEPIEN_Msk;
+  HSUSBD_GINTEN_CEPIEN_Msk | HSUSBD_GINTEN_EPAIEN_Msk | HSUSBD_GINTEN_EPBIEN_Msk | HSUSBD_GINTEN_EPCIEN_Msk | HSUSBD_GINTEN_EPDIEN_Msk | HSUSBD_GINTEN_EPEIEN_Msk | HSUSBD_GINTEN_EPFIEN_Msk | \
+  HSUSBD_GINTEN_EPGIEN_Msk | HSUSBD_GINTEN_EPHIEN_Msk | HSUSBD_GINTEN_EPIIEN_Msk | HSUSBD_GINTEN_EPJIEN_Msk | HSUSBD_GINTEN_EPKIEN_Msk | HSUSBD_GINTEN_EPLIEN_Msk;
 
 /*
   NUC505 TinyUSB API driver implementation
@@ -290,17 +295,19 @@ void dcd_init(uint8_t rhport)
   /* configure interrupts in their initial state; BUSINTEN and CEPINTEN will be subsequently and dynamically re-written as needed */
   HSUSBD->GINTEN = enabled_irqs;
   HSUSBD->BUSINTEN = HSUSBD_BUSINTEN_RSTIEN_Msk | HSUSBD_BUSINTEN_VBUSDETIEN_Msk | HSUSBD_BUSINTEN_RESUMEIEN_Msk | HSUSBD_BUSINTEN_DMADONEIEN_Msk;
+      /* Enable USBD interrupt */
+  HSUSBD->OPER = HSUSBD_OPER_HISPDEN_Msk;
   HSUSBD->CEPINTEN = 0;
-  printf("bus reset \n");
   bus_reset(rhport);
-  printf("connect rhport %d\n", rhport);
   usb_attach(rhport);
 }
 
 void dcd_int_enable(uint8_t rhport)
 {
   (void) rhport;
-  NVIC_EnableIRQ(rhport == USB_HS ? USBD20_IRQn : USBD_IRQn);
+
+  NVIC_EnableIRQ(USBD20_IRQn);
+  //NVIC_EnableIRQ(rhport == USB_HS ? USBD20_IRQn : USBD_IRQn);
 }
 
 void dcd_int_disable(uint8_t rhport)
@@ -318,14 +325,13 @@ void dcd_set_address(uint8_t rhport, uint8_t dev_addr)
 
 void dcd_remote_wakeup(uint8_t rhport)
 {
-  (void) rhport;
+    (void) rhport;
   HSUSBD->OPER |= HSUSBD_OPER_RESUMEEN_Msk;
 }
 
 bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * p_endpoint_desc)
 {
   (void) rhport;
-
   HSUSBD_EP_T *ep = ep_entry(p_endpoint_desc->bEndpointAddress, true);
   TU_ASSERT(ep);
 
@@ -369,7 +375,6 @@ void dcd_edpt_close_all (uint8_t rhport)
 bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t total_bytes)
 {
   (void) rhport;
-
   if (0x80 == ep_addr) /* control EP0 IN */
   {
     if (total_bytes)
@@ -394,7 +399,6 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
       while (total_bytes < HSUSBD->CEPRXCNT);
       for (int count = 0; count < total_bytes; count++)
         *buffer++ = HSUSBD->CEPDAT_BYTE;
-      
       dcd_event_xfer_complete(0, ep_addr, total_bytes, XFER_RESULT_SUCCESS, true);
     }
   }
@@ -430,7 +434,6 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
 bool dcd_edpt_xfer_fifo (uint8_t rhport, uint8_t ep_addr, tu_fifo_t * ff, uint16_t total_bytes)
 {
   (void) rhport;
-
   TU_ASSERT(0x80 != ep_addr && 0x00 != ep_addr);  // Must not be used for control stuff
 
   /* mine the data for the information we need */
@@ -488,264 +491,192 @@ void dcd_edpt_clear_stall(uint8_t rhport, uint8_t ep_addr)
 
 void dcd_int_handler(uint8_t rhport)
 {
-  (void) rhport;
+    (void) rhport;
+    uint32_t status = HSUSBD->GINTSTS & HSUSBD->GINTEN;
 
-  uint32_t status = HSUSBD->GINTSTS & HSUSBD->GINTEN;
+    /* USB interrupt */
+    if (status & HSUSBD_GINTSTS_USBIF_Msk) {
+        uint32_t bus_state = HSUSBD->BUSINTSTS & HSUSBD->BUSINTEN;
+        if (bus_state & HSUSBD_BUSINTSTS_SOFIF_Msk) {
+            /* Start-Of-Frame event */
+            dcd_event_bus_signal(rhport, DCD_EVENT_SOF, true);
+        }
 
-  /* USB interrupt */
-  if (status & HSUSBD_GINTSTS_USBIF_Msk)
-  {
-    uint32_t bus_state = HSUSBD->BUSINTSTS & HSUSBD->BUSINTEN;
+        if (bus_state & HSUSBD_BUSINTSTS_RSTIF_Msk) {
+            bus_reset(rhport);
 
-    if (bus_state & HSUSBD_BUSINTSTS_SOFIF_Msk)
-    {
-      /* Start-Of-Frame event */
-      dcd_event_bus_signal(rhport, DCD_EVENT_SOF, true);
-    }
+            HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_SETUPPKIEN_Msk;
+            HSUSBD->BUSINTEN = HSUSBD_BUSINTSTS_RSTIF_Msk | HSUSBD_BUSINTEN_RESUMEIEN_Msk | HSUSBD_BUSINTEN_SUSPENDIEN_Msk | HSUSBD_BUSINTEN_DMADONEIEN_Msk;
+            HSUSBD->CEPINTSTS = 0X1ffc;
 
-    if (bus_state & HSUSBD_BUSINTSTS_RSTIF_Msk)
-    {
-        bus_reset(rhport);
+            /* HSUSBD_ENABLE_CEP_INT(HSUSBD_CEPINTEN_SETUPPKIEN_Msk); */
+            /* HSUSBD_SET_ADDR(0); */
+            /* HSUSBD_ENABLE_BUS_INT(HSUSBD_BUSINTEN_RSTIEN_Msk|HSUSBD_BUSINTEN_RESUMEIEN_Msk|HSUSBD_BUSINTEN_SUSPENDIEN_Msk); */
+            /* HSUSBD_CLR_BUS_INT_FLAG(HSUSBD_BUSINTSTS_RSTIF_Msk); */
+            /* HSUSBD_CLR_CEP_INT_FLAG(0x1ffc); */
 
-        HSUSBD_ENABLE_CEP_INT(HSUSBD_CEPINTEN_SETUPPKIEN_Msk);
-        HSUSBD_SET_ADDR(0);
-        HSUSBD_ENABLE_BUS_INT(HSUSBD_BUSINTEN_RSTIEN_Msk|HSUSBD_BUSINTEN_RESUMEIEN_Msk|HSUSBD_BUSINTEN_SUSPENDIEN_Msk);
-        HSUSBD_CLR_BUS_INT_FLAG(HSUSBD_BUSINTSTS_RSTIF_Msk);
-        HSUSBD_CLR_CEP_INT_FLAG(0x1ffc);
+            tusb_speed_t speed = (HSUSBD->OPER & 0x04) ? TUSB_SPEED_HIGH : TUSB_SPEED_FULL;
+            dcd_event_bus_reset(rhport, speed, true);
+        }
 
-      tusb_speed_t speed = (HSUSBD->OPER & 0x04) ? TUSB_SPEED_HIGH : TUSB_SPEED_FULL;
-      dcd_event_bus_reset(rhport, speed, true);
-    }
+        if (bus_state & HSUSBD_BUSINTSTS_RESUMEIF_Msk) {
+            HSUSBD->BUSINTEN = HSUSBD_BUSINTEN_RSTIEN_Msk | HSUSBD_BUSINTEN_SUSPENDIEN_Msk | HSUSBD_BUSINTEN_DMADONEIEN_Msk;
+            dcd_event_bus_signal(rhport, DCD_EVENT_RESUME, true);
+        }
 
-    if (bus_state & HSUSBD_BUSINTSTS_RESUMEIF_Msk)
-    {
-        HSUSBD_ENABLE_BUS_INT(HSUSBD_BUSINTEN_RSTIEN_Msk|HSUSBD_BUSINTEN_SUSPENDIEN_Msk);
-        HSUSBD_CLR_BUS_INT_FLAG(HSUSBD_BUSINTSTS_RESUMEIF_Msk);
-      dcd_event_bus_signal(rhport, DCD_EVENT_RESUME, true);
-    }
+        if (bus_state & HSUSBD_BUSINTSTS_SUSPENDIF_Msk) {
+            HSUSBD->BUSINTEN = HSUSBD_BUSINTEN_RSTIEN_Msk | HSUSBD_BUSINTEN_RESUMEIEN_Msk | HSUSBD_BUSINTEN_DMADONEIEN_Msk;
+            dcd_event_bus_signal(rhport, DCD_EVENT_SUSPEND, true);
+        }
 
-    if (bus_state & HSUSBD_BUSINTSTS_SUSPENDIF_Msk)
-    {
-        HSUSBD_ENABLE_BUS_INT(HSUSBD_BUSINTEN_RSTIEN_Msk | HSUSBD_BUSINTEN_RESUMEIEN_Msk);
-        HSUSBD_CLR_BUS_INT_FLAG(HSUSBD_BUSINTSTS_SUSPENDIF_Msk);
-      dcd_event_bus_signal(rhport, DCD_EVENT_SUSPEND, true);
-    }
+        if (bus_state & HSUSBD_BUSINTSTS_HISPDIF_Msk) {
+            HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_SETUPPKIEN_Msk;
+        }
 
-    if (bus_state & HSUSBD_BUSINTSTS_HISPDIF_Msk)
-    {
-        HSUSBD_ENABLE_CEP_INT(HSUSBD_CEPINTEN_SETUPPKIEN_Msk);
-        HSUSBD_CLR_BUS_INT_FLAG(HSUSBD_BUSINTSTS_HISPDIF_Msk);
-
-    }
-
-    if (bus_state & HSUSBD_BUSINTSTS_DMADONEIF_Msk)
-    {
+        if (bus_state & HSUSBD_BUSINTSTS_DMADONEIF_Msk) {
 #if USE_DMA
-      if (current_dma_xfer)
-      {
-        current_dma_xfer->dma_requested = false;
+            if (current_dma_xfer) {
+                current_dma_xfer->dma_requested = false;
 
-        uint16_t available_bytes = HSUSBD->DMACNT & HSUSBD_DMACNT_DMACNT_Msk;
+                uint16_t available_bytes = HSUSBD->DMACNT & HSUSBD_DMACNT_DMACNT_Msk;
 
-        /* if the most recent DMA finishes the transfer, alert TinyUSB; otherwise, the next RXPKIF/INTKIF endpoint interrupt will prompt the next DMA */
-        if ( (current_dma_xfer->total_bytes == current_dma_xfer->out_bytes_so_far) || (available_bytes < current_dma_xfer->max_packet_size) )
-        {
-          dcd_event_xfer_complete(rhport, current_dma_xfer->ep_addr, current_dma_xfer->out_bytes_so_far, XFER_RESULT_SUCCESS, true);
-        }
+                /* if the most recent DMA finishes the transfer, alert TinyUSB; otherwise, the next RXPKIF/INTKIF endpoint interrupt will prompt the next DMA */
+                if ( (current_dma_xfer->total_bytes == current_dma_xfer->out_bytes_so_far) || (available_bytes < current_dma_xfer->max_packet_size) ) {
+                    dcd_event_xfer_complete(rhport, current_dma_xfer->ep_addr, current_dma_xfer->out_bytes_so_far, XFER_RESULT_SUCCESS, true);
+                }
 
-        current_dma_xfer = NULL;
-        service_dma();
-      }
-#endif
-    }
-
-    if (bus_state & HSUSBD_BUSINTSTS_PHYCLKVLDIF_Msk)
-        HSUSBD_CLR_BUS_INT_FLAG(HSUSBD_BUSINTSTS_PHYCLKVLDIF_Msk);
-
-    if (bus_state & HSUSBD_BUSINTSTS_VBUSDETIF_Msk)
-    {
-      if (HSUSBD->PHYCTL & HSUSBD_PHYCTL_VBUSDET_Msk)
-      {
-        /* USB connect */
-          HSUSBD_ENABLE_USB();
-      }
-      else
-      {
-        /* USB disconnect */
-          HSUSBD_DISABLE_USB();
-      }
-      HSUSBD_CLR_BUS_INT_FLAG(HSUSBD_BUSINTSTS_VBUSDETIF_Msk);
-    }
-  }
-
-  if (status & HSUSBD_GINTSTS_CEPIF_Msk)
-  {
-    uint32_t cep_state = HSUSBD->CEPINTSTS & HSUSBD->CEPINTEN;
-/* // exists in USBD20_IRQHandle
-    if (cep_state & HSUSBD_CEPINTSTS_SETUPTKIF_Msk)
-        {
-            HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_SETUPTKIF_Msk);
-            return;
-        }
-*/
-    if (cep_state & HSUSBD_CEPINTSTS_SETUPPKIF_Msk)
-    {
-      /* get SETUP packet from USB buffer */
-      uint8_t setup_packet[8];
-      setup_packet[0] = (uint8_t)(HSUSBD->SETUP1_0 >> 0);
-      setup_packet[1] = (uint8_t)(HSUSBD->SETUP1_0 >> 8);
-      setup_packet[2] = (uint8_t)(HSUSBD->SETUP3_2 >> 0);
-      setup_packet[3] = (uint8_t)(HSUSBD->SETUP3_2 >> 8);
-      setup_packet[4] = (uint8_t)(HSUSBD->SETUP5_4 >> 0);
-      setup_packet[5] = (uint8_t)(HSUSBD->SETUP5_4 >> 8);
-      setup_packet[6] = (uint8_t)(HSUSBD->SETUP7_6 >> 0);
-      setup_packet[7] = (uint8_t)(HSUSBD->SETUP7_6 >> 8);
-      dcd_event_setup_received(rhport, setup_packet, true);
-    }
-    else if (cep_state & HSUSBD_CEPINTSTS_INTKIF_Msk)
-    {
-        HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_INTKIF_Msk);
-
-      if (!(cep_state & HSUSBD_CEPINTSTS_STSDONEIF_Msk))
-      {
-        HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_TXPKIF_Msk);
-        HSUSBD_ENABLE_CEP_INT(HSUSBD_CEPINTEN_TXPKIEN_Msk);
-
-        uint16_t bytes_now = tu_min16(ctrl_in_xfer.in_remaining_bytes, CFG_TUD_ENDPOINT0_SIZE);
-        for (int count = 0; count < bytes_now; count++)
-          HSUSBD->CEPDAT_BYTE = *ctrl_in_xfer.data_ptr++;
-        ctrl_in_xfer.in_remaining_bytes -= bytes_now;
-        HSUSBD_START_CEP_IN(bytes_now);
-      }
-      else
-      {
-          HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_TXPKIF_Msk);
-          HSUSBD_ENABLE_CEP_INT(HSUSBD_CEPINTEN_TXPKIEN_Msk|HSUSBD_CEPINTEN_STSDONEIEN_Msk);
-      }
-    } else if (cep_state & HSUSBD_CEPINTSTS_PINGIF_Msk) {
-        HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_PINGIF_Msk);
-    }
-    else if (cep_state & HSUSBD_CEPINTSTS_TXPKIF_Msk)
-    {
-        HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_STSDONEIF_Msk);
-        HSUSBD_SET_CEP_STATE(HSUSBD_CEPCTL_NAKCLR);
-
-      /* alert TinyUSB that the EP0 IN transfer has finished */
-      if ( (0 == ctrl_in_xfer.in_remaining_bytes) || (0 == ctrl_in_xfer.total_bytes) )
-        dcd_event_xfer_complete(0, 0x80, ctrl_in_xfer.total_bytes, XFER_RESULT_SUCCESS, true);
-
-      if (ctrl_in_xfer.in_remaining_bytes)
-      {
-          HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_INTKIF_Msk);
-          HSUSBD_ENABLE_CEP_INT(HSUSBD_CEPINTEN_INTKIEN_Msk);
-      }
-      else
-      {
-        /* TinyUSB does its own fragmentation and ZLP for EP0; a transfer of zero means a ZLP */
-        if (0 == ctrl_in_xfer.total_bytes) HSUSBD->CEPCTL = HSUSBD_CEPCTL_ZEROLEN_Msk;
-
-        HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_STSDONEIF_Msk);
-        HSUSBD_ENABLE_CEP_INT(HSUSBD_CEPINTEN_SETUPPKIEN_Msk|HSUSBD_CEPINTEN_STSDONEIEN_Msk);
-
-      }
-      HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_TXPKIF_Msk);
-    } else if (cep_state & HSUSBD_CEPINTSTS_RXPKIF_Msk) {
-        HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_RXPKIF_Msk);
-        HSUSBD_SET_CEP_STATE(HSUSBD_CEPCTL_NAKCLR);
-        HSUSBD_ENABLE_CEP_INT(HSUSBD_CEPINTEN_SETUPPKIEN_Msk|HSUSBD_CEPINTEN_STSDONEIEN_Msk);
-    } else if (cep_state & HSUSBD_CEPINTSTS_NAKIF_Msk) {
-        HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_NAKIF_Msk);
-    } else if (cep_state & HSUSBD_CEPINTSTS_STALLIF_Msk) {
-        HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_STALLIF_Msk);
-    } else if (cep_state & HSUSBD_CEPINTSTS_ERRIF_Msk) {
-        HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_ERRIF_Msk);
-    }
-    else if (cep_state & HSUSBD_CEPINTSTS_STSDONEIF_Msk)
-    {
-      /* given ACK from host has happened, we can now set the address (if not already done) */
-      if((HSUSBD->FADDR != assigned_address) && (HSUSBD->FADDR == 0))
-      {
-        HSUSBD->FADDR = assigned_address;
-
-        for (enum ep_enum ep_index = PERIPH_CEP; ep_index < PERIPH_MAX_EP; ep_index++)
-        {
-          if (HSUSBD->EP[ep_index].EPCFG & HSUSBD_EPCFG_EPEN_Msk) HSUSBD->EP[ep_index].EPRSPCTL = HSUSBD_EPRSPCTL_TOGGLE_Msk;
-        }
-      }
-
-      HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_SETUPPKIEN_Msk;
-    } else if (cep_state & HSUSBD_CEPINTSTS_BUFFULLIF_Msk) {
-        HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_BUFFULLIF_Msk);
-    } else if (cep_state & HSUSBD_CEPINTSTS_BUFEMPTYIF_Msk) {
-        HSUSBD_CLR_CEP_INT_FLAG(HSUSBD_CEPINTSTS_BUFEMPTYIF_Msk);
-    }
-
-    HSUSBD->CEPINTSTS = cep_state;
-
-    return;
-  }
-
-  if (status & (HSUSBD_GINTSTS_CEPIF_Msk | HSUSBD_GINTSTS_EPBIF_Msk | HSUSBD_GINTSTS_EPCIF_Msk | HSUSBD_GINTSTS_EPDIF_Msk | HSUSBD_GINTSTS_EPEIF_Msk | HSUSBD_GINTSTS_EPFIF_Msk | HSUSBD_GINTSTS_EPGIF_Msk | HSUSBD_GINTSTS_EPHIF_Msk | HSUSBD_GINTSTS_EPIIF_Msk | HSUSBD_GINTSTS_EPJIF_Msk | HSUSBD_GINTSTS_EPKIF_Msk | HSUSBD_GINTSTS_EPLIF_Msk))
-  {
-    /* service PERIPH_CEP through PERIPH_EPL */
-    enum ep_enum ep_index;
-    uint32_t mask;
-    struct xfer_ctl_t *xfer;
-    HSUSBD_EP_T *ep;
-    for (ep_index = PERIPH_CEP, mask = HSUSBD_GINTSTS_CEPIF_Msk, xfer = &xfer_table[PERIPH_CEP], ep = &HSUSBD->EP[PERIPH_CEP]; ep_index < PERIPH_MAX_EP; ep_index++, mask <<= 1, xfer++, ep++)
-    {
-      if(status & mask)
-      {
-        uint8_t const ep_addr = xfer->ep_addr;
-        bool const out_ep = !(ep_addr & TUSB_DIR_IN_MASK);
-        uint32_t ep_state = ep->EPINTSTS & ep->EPINTEN;
-
-        if (out_ep)
-        {
-#if USE_DMA
-          xfer->dma_requested = true;
-          service_dma();
-#else
-          uint16_t const available_bytes = ep->EPDATCNT & HSUSBD_EPDATCNT_DATCNT_Msk;
-          /* copy the data from the PC to the previously provided buffer */
-#if 0 // TODO support dcd_edpt_xfer_fifo API
-          if (xfer->ff)
-          {
-            tu_fifo_write_n_const_addr_full_words(xfer->ff, (const void *) &ep->EPDAT_BYTE, tu_min16(available_bytes, xfer->total_bytes - xfer->out_bytes_so_far));
-          }
-          else
-#endif
-          {
-            for (int count = 0; (count < available_bytes) && (xfer->out_bytes_so_far < xfer->total_bytes); count++, xfer->out_bytes_so_far++)
-            {
-              *xfer->data_ptr++ = ep->EPDAT_BYTE;
+                current_dma_xfer = NULL;
+                service_dma();
             }
-          }
+#endif
+        }
 
-          /* when the transfer is finished, alert TinyUSB; otherwise, continue accepting more data */
-          if ( (xfer->total_bytes == xfer->out_bytes_so_far) || (available_bytes < xfer->max_packet_size) )
-          {
-            dcd_event_xfer_complete(0, ep_addr, xfer->out_bytes_so_far, XFER_RESULT_SUCCESS, true);
-          }
+        if (bus_state & HSUSBD_BUSINTSTS_VBUSDETIF_Msk) {
+            if (HSUSBD->PHYCTL & HSUSBD_PHYCTL_VBUSDET_Msk) {
+                /* USB connect */
+                HSUSBD->PHYCTL |= HSUSBD_PHYCTL_PHYEN_Msk | HSUSBD_PHYCTL_DPPUEN_Msk;
+            } else {
+                /* USB disconnect */
+                HSUSBD->PHYCTL &= ~HSUSBD_PHYCTL_DPPUEN_Msk;
+            }
+        }
+        HSUSBD->BUSINTSTS = bus_state & (HSUSBD_BUSINTSTS_SOFIF_Msk | HSUSBD_BUSINTSTS_RSTIF_Msk | HSUSBD_BUSINTSTS_RESUMEIF_Msk | HSUSBD_BUSINTSTS_SUSPENDIF_Msk | HSUSBD_BUSINTSTS_HISPDIF_Msk | HSUSBD_BUSINTSTS_DMADONEIF_Msk | HSUSBD_BUSINTSTS_PHYCLKVLDIF_Msk | HSUSBD_BUSINTSTS_VBUSDETIF_Msk);
+    }
+
+    if (status & HSUSBD_GINTSTS_CEPIF_Msk) {
+        uint32_t cep_state = HSUSBD->CEPINTSTS & HSUSBD->CEPINTEN;
+
+        if (cep_state & HSUSBD_CEPINTSTS_SETUPPKIF_Msk) {
+            /* get SETUP packet from USB buffer */
+            uint8_t setup_packet[8];
+            setup_packet[0] = (uint8_t)(HSUSBD->SETUP1_0 >> 0);
+            setup_packet[1] = (uint8_t)(HSUSBD->SETUP1_0 >> 8);
+            setup_packet[2] = (uint8_t)(HSUSBD->SETUP3_2 >> 0);
+            setup_packet[3] = (uint8_t)(HSUSBD->SETUP3_2 >> 8);
+            setup_packet[4] = (uint8_t)(HSUSBD->SETUP5_4 >> 0);
+            setup_packet[5] = (uint8_t)(HSUSBD->SETUP5_4 >> 8);
+            setup_packet[6] = (uint8_t)(HSUSBD->SETUP7_6 >> 0);
+            setup_packet[7] = (uint8_t)(HSUSBD->SETUP7_6 >> 8);
+            dcd_event_setup_received(rhport, setup_packet, true);
+        } else if (cep_state & HSUSBD_CEPINTSTS_INTKIF_Msk) {
+            HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_TXPKIF_Msk;
+
+            if (!(cep_state & HSUSBD_CEPINTSTS_STSDONEIF_Msk)) {
+                HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_TXPKIEN_Msk;
+
+                uint16_t bytes_now = tu_min16(ctrl_in_xfer.in_remaining_bytes, CFG_TUD_ENDPOINT0_SIZE);
+                for (int count = 0; count < bytes_now; count++)
+                    HSUSBD->CEPDAT_BYTE = *ctrl_in_xfer.data_ptr++;
+                ctrl_in_xfer.in_remaining_bytes -= bytes_now;
+                HSUSBD_START_CEP_IN(bytes_now);
+            } else {
+                HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_TXPKIEN_Msk | HSUSBD_CEPINTEN_STSDONEIEN_Msk;
+            }
+        } else if (cep_state & HSUSBD_CEPINTSTS_TXPKIF_Msk) {
+            HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_STSDONEIF_Msk;
+            HSUSBD_SET_CEP_STATE(HSUSBD_CEPCTL_NAKCLR);
+
+            /* alert TinyUSB that the EP0 IN transfer has finished */
+            if ( (0 == ctrl_in_xfer.in_remaining_bytes) || (0 == ctrl_in_xfer.total_bytes) )
+                dcd_event_xfer_complete(0, 0x80, ctrl_in_xfer.total_bytes, XFER_RESULT_SUCCESS, true);
+
+            if (ctrl_in_xfer.in_remaining_bytes) {
+                HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_INTKIF_Msk;
+                HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_INTKIEN_Msk;
+            } else {
+                /* TinyUSB does its own fragmentation and ZLP for EP0; a transfer of zero means a ZLP */
+                if (0 == ctrl_in_xfer.total_bytes) HSUSBD->CEPCTL = HSUSBD_CEPCTL_ZEROLEN_Msk;
+
+                HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_STSDONEIF_Msk;
+                HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_SETUPPKIEN_Msk | HSUSBD_CEPINTEN_STSDONEIEN_Msk;
+            }
+        } else if (cep_state & HSUSBD_CEPINTSTS_STSDONEIF_Msk) {
+            /* given ACK from host has happened, we can now set the address (if not already done) */
+            if((HSUSBD->FADDR != assigned_address) && (HSUSBD->FADDR == 0)) {
+                HSUSBD->FADDR = assigned_address;
+
+                for (enum ep_enum ep_index = PERIPH_EPA; ep_index < PERIPH_MAX_EP; ep_index++) {
+                    if (HSUSBD->EP[ep_index].EPCFG & HSUSBD_EPCFG_EPEN_Msk) HSUSBD->EP[ep_index].EPRSPCTL = HSUSBD_EPRSPCTL_TOGGLE_Msk;
+                }
+            }
+
+            HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_SETUPPKIEN_Msk;
+        }
+        HSUSBD->CEPINTSTS = cep_state;
+
+        return;
+    }
+
+
+    if (status & (HSUSBD_GINTSTS_EPAIF_Msk | HSUSBD_GINTSTS_EPBIF_Msk | HSUSBD_GINTSTS_EPCIF_Msk | HSUSBD_GINTSTS_EPDIF_Msk | HSUSBD_GINTSTS_EPEIF_Msk | HSUSBD_GINTSTS_EPFIF_Msk | HSUSBD_GINTSTS_EPGIF_Msk | HSUSBD_GINTSTS_EPHIF_Msk | HSUSBD_GINTSTS_EPIIF_Msk | HSUSBD_GINTSTS_EPJIF_Msk | HSUSBD_GINTSTS_EPKIF_Msk | HSUSBD_GINTSTS_EPLIF_Msk)) {
+        /* service PERIPH_CEP through PERIPH_EPL */
+        enum ep_enum ep_index;
+        uint32_t mask;
+        struct xfer_ctl_t *xfer;
+        HSUSBD_EP_T *ep;
+        for (ep_index = PERIPH_EPA, mask = HSUSBD_GINTSTS_EPAIF_Msk, xfer = &xfer_table[PERIPH_EPA], ep = &HSUSBD->EP[PERIPH_EPA]; ep_index < PERIPH_MAX_EP; ep_index++, mask <<= 1, xfer++, ep++) {
+            if(status & mask) {
+                uint8_t const ep_addr = xfer->ep_addr;
+                bool const out_ep = !(ep_addr & TUSB_DIR_IN_MASK);
+                uint32_t ep_state = ep->EPINTSTS & ep->EPINTEN;
+
+                if (out_ep) {
+#if USE_DMA
+                    xfer->dma_requested = true;
+                    service_dma();
+#else
+                    uint16_t const available_bytes = ep->EPDATCNT & HSUSBD_EPDATCNT_DATCNT_Msk;
+                    /* copy the data from the PC to the previously provided buffer */
+#if 0 // TODO support dcd_edpt_xfer_fifo API
+                    if (xfer->ff) {
+                        tu_fifo_write_n_const_addr_full_words(xfer->ff, (const void *) &ep->EPDAT_BYTE, tu_min16(available_bytes, xfer->total_bytes - xfer->out_bytes_so_far));
+                    } else
+#endif
+                        {
+                            for (int count = 0; (count < available_bytes) && (xfer->out_bytes_so_far < xfer->total_bytes); count++, xfer->out_bytes_so_far++) {
+                                *xfer->data_ptr++ = ep->EPDAT_BYTE;
+                            }
+                        }
+
+                    /* when the transfer is finished, alert TinyUSB; otherwise, continue accepting more data */
+                    if ( (xfer->total_bytes == xfer->out_bytes_so_far) || (available_bytes < xfer->max_packet_size) ) {
+                        dcd_event_xfer_complete(0, ep_addr, xfer->out_bytes_so_far, XFER_RESULT_SUCCESS, true);
+                    }
 #endif
 
-        }
-        else if (ep_state & HSUSBD_EPINTSTS_BUFEMPTYIF_Msk)
-        {
-          /* send any remaining data */
-          dcd_userEP_in_xfer(xfer, ep);
-        }
-        else if (ep_state & HSUSBD_EPINTSTS_TXPKIF_Msk)
-        {
-          /* alert TinyUSB that we've finished */
-          dcd_event_xfer_complete(0, ep_addr, xfer->total_bytes, XFER_RESULT_SUCCESS, true);
-          ep->EPINTEN = 0;
-        }
+                } else if (ep_state & HSUSBD_EPINTSTS_BUFEMPTYIF_Msk) {
+                    /* send any remaining data */
+                    dcd_userEP_in_xfer(xfer, ep);
+                } else if (ep_state & HSUSBD_EPINTSTS_TXPKIF_Msk) {
+                    /* alert TinyUSB that we've finished */
+                    dcd_event_xfer_complete(0, ep_addr, xfer->total_bytes, XFER_RESULT_SUCCESS, true);
+                    ep->EPINTEN = 0;
+                }
 
-        ep->EPINTSTS = ep_state;
-      }
+                ep->EPINTSTS = ep_state;
+            }
+        }
     }
-  }
 }
 
 void dcd_disconnect(uint8_t rhport)

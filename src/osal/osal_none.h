@@ -105,7 +105,7 @@ TU_ATTR_ALWAYS_INLINE static inline bool osal_mutex_unlock(osal_mutex_t mutex_hd
 
 typedef struct
 {
-  void (*interrupt_set)(bool);
+    void (*interrupt_set)(bool);
   tu_fifo_t ff;
 }osal_queue_def_t;
 
@@ -123,14 +123,14 @@ typedef osal_queue_def_t* osal_queue_t;
 TU_ATTR_ALWAYS_INLINE static inline void _osal_q_lock(osal_queue_t qhdl)
 {
   // disable dcd/hcd interrupt
-  qhdl->interrupt_set(false);
+    qhdl->interrupt_set(false);
 }
 
 // unlock queue
 TU_ATTR_ALWAYS_INLINE static inline void _osal_q_unlock(osal_queue_t qhdl)
 {
   // enable dcd/hcd interrupt
-  qhdl->interrupt_set(true);
+    qhdl->interrupt_set(true);
 }
 
 TU_ATTR_ALWAYS_INLINE static inline osal_queue_t osal_queue_create(osal_queue_def_t* qdef)
@@ -153,13 +153,13 @@ TU_ATTR_ALWAYS_INLINE static inline bool osal_queue_receive(osal_queue_t qhdl, v
 TU_ATTR_ALWAYS_INLINE static inline bool osal_queue_send(osal_queue_t qhdl, void const * data, bool in_isr)
 {
   if (!in_isr) {
-    _osal_q_lock(qhdl);
+      _osal_q_lock(qhdl);
   }
 
   bool success = tu_fifo_write(&qhdl->ff, data);
 
   if (!in_isr) {
-    _osal_q_unlock(qhdl);
+      _osal_q_unlock(qhdl);
   }
 
   TU_ASSERT(success);

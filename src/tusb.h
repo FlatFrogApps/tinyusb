@@ -126,7 +126,7 @@
 bool tusb_init(void);
 
 // Check if stack is initialized
-bool tusb_inited(void);
+bool tusb_inited(uint8_t rhport);
 
 // TODO
 // bool tusb_teardown(void);

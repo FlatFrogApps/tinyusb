@@ -41,22 +41,23 @@ extern "C" {
 bool tud_init (uint8_t rhport);
 
 // Check if device stack is already initialized
-bool tud_inited(void);
+bool tud_inited(uint8_t rhport);
 
 // Task function should be called in main/rtos loop, extended version of tud_task()
+// - RHPort: which RHPort to handle
 // - timeout_ms: millisecond to wait, zero = no wait, 0xFFFFFFFF = wait forever
 // - in_isr: if function is called in ISR
-void tud_task_ext(uint32_t timeout_ms, bool in_isr);
+void tud_task_ext(uint8_t rhport, uint32_t timeout_ms, bool in_isr);
 
 // Task function should be called in main/rtos loop
 TU_ATTR_ALWAYS_INLINE static inline
-void tud_task (void)
+void tud_task (uint8_t rhport)
 {
-  tud_task_ext(UINT32_MAX, false);
+tud_task_ext(rhport, UINT32_MAX, false);
 }
 
 // Check if there is pending events need processing by tud_task()
-bool tud_task_event_ready(void);
+bool tud_task_event_ready(uint8_t rhport);
 
 #ifndef _TUSB_DCD_H_
 extern void dcd_int_handler(uint8_t rhport);
@@ -66,35 +67,35 @@ extern void dcd_int_handler(uint8_t rhport);
 #define tud_int_handler   dcd_int_handler
 
 // Get current bus speed
-tusb_speed_t tud_speed_get(void);
+tusb_speed_t tud_speed_get(uint8_t rhport);
 
 // Check if device is connected (may not mounted/configured yet)
 // True if just got out of Bus Reset and received the very first data from host
-bool tud_connected(void);
+bool tud_connected(uint8_t rhport);
 
 // Check if device is connected and configured
-bool tud_mounted(void);
+bool tud_mounted(uint8_t rhport);
 
 // Check if device is suspended
-bool tud_suspended(void);
+bool tud_suspended(uint8_t rhport);
 
 // Check if device is ready to transfer
 TU_ATTR_ALWAYS_INLINE static inline
-bool tud_ready(void)
+bool tud_ready()
 {
-  return tud_mounted() && !tud_suspended();
+    return tud_mounted(0) && !tud_suspended(0); //hardcode for now to make it build. is not used
 }
 
 // Remote wake up host, only if suspended and enabled by host
-bool tud_remote_wakeup(void);
+bool tud_remote_wakeup(uint8_t rhport);
 
 // Enable pull-up resistor on D+ D-
 // Return false on unsupported MCUs
-bool tud_disconnect(void);
+bool tud_disconnect(uint8_t rhport);
 
 // Disable pull-up resistor on D+ D-
 // Return false on unsupported MCUs
-bool tud_connect(void);
+bool tud_connect(uint8_t rhport);
 
 // Carry out Data and Status stage of control transfer
 // - If len = 0, it is equivalent to sending status only

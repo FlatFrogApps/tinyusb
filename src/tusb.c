@@ -51,12 +51,12 @@ bool tusb_init(void)
   return true;
 }
 
-bool tusb_inited(void)
+bool tusb_inited(uint8_t rhport)
 {
   bool ret = false;
 
 #if CFG_TUD_ENABLED
-  ret = ret || tud_inited();
+  ret = ret || tud_inited(rhport);
 #endif
 
 #if CFG_TUH_ENABLED

@@ -20,10 +20,10 @@ enum usb_port
  * transfer lengths that are longer (> 64 bytes) and are not a multiple of 4.
  * Keep disabled for now.
  */
-#define USE_DMA     0
+#define USE_DMA     1
 
 /* rather important info unfortunately not provided by device include files */
-#define HSUSBD_BUF_SIZE          1024 /* how much USB buffer space there is */
+#define HSUSBD_BUF_SIZE          (1024 * 12) /* how much USB buffer space there is */
 #define HSUSBD_MAX_DMA_LEN     0x1000 /* max bytes that can be DMAed at one time */
 #define FSUSBD_BUF_SIZE          1024
 
@@ -360,16 +360,17 @@ static void bus_reset(uint8_t rhport)
 
 #if USE_DMA
 /* this must only be called by the ISR; it does its best to share the single DMA engine across all user EPs (IN and OUT) */
-static void service_dma(void)
+static void service_dma(uint8_t rhport)
 {
+    if (rhport != USB_HS) return;
   if (current_dma_xfer)
     return;
 
   enum ep_enum ep_index;
   struct xfer_ctl_t *xfer;
-  USBD_EP_T *ep;
+  HSUSBD_EP_T *ep;
 
-  for (ep_index = PERIPH_CEP, xfer = &xfer_table[PERIPH_CEP], ep = &HSUSBD->EP[PERIPH_CEP]; ep_index < PERIPH_MAX_EP; ep_index++, xfer++, ep++)
+  for (ep_index = PERIPH_EPA, xfer = &xfer_table[PERIPH_EPA], ep = &HSUSBD->EP[PERIPH_EPA]; ep_index < PERIPH_MAX_EP; ep_index++, xfer++, ep++)
   {
     uint16_t const available_bytes = ep->EPDATCNT & HSUSBD_EPDATCNT_DATCNT_Msk;
 
@@ -778,7 +779,7 @@ void dcd_int_handler(uint8_t rhport)
                     }
 
                     current_dma_xfer = NULL;
-                    service_dma();
+                    service_dma(rhport);
                 }
 #endif
             }
@@ -875,7 +876,7 @@ void dcd_int_handler(uint8_t rhport)
                     if (out_ep) {
 #if USE_DMA
                         xfer->dma_requested = true;
-                        service_dma();
+                        service_dma(rhport);
 #else
                         uint16_t const available_bytes = ep->EPDATCNT & HSUSBD_EPDATCNT_DATCNT_Msk;
                         /* copy the data from the PC to the previously provided buffer */

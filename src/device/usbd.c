@@ -297,9 +297,9 @@ static bool process_set_config(uint8_t rhport, uint8_t cfg_num);
 static bool process_get_descriptor(uint8_t rhport, tusb_control_request_t const * p_request);
 
 // from usbd_control.c
-void usbd_control_reset(void);
-void usbd_control_set_request(tusb_control_request_t const *request);
-void usbd_control_set_complete_callback( usbd_control_xfer_cb_t fp );
+void usbd_control_reset(uint8_t rhport);
+void usbd_control_set_request(uint8_t rhport, tusb_control_request_t const *request);
+void usbd_control_set_complete_callback(uint8_t rhport, usbd_control_xfer_cb_t fp );
 bool usbd_control_xfer_cb (uint8_t rhport, uint8_t ep_addr, xfer_result_t event, uint32_t xferred_bytes);
 
 
@@ -453,7 +453,7 @@ static void configuration_reset(uint8_t rhport)
 static void usbd_reset(uint8_t rhport)
 {
   configuration_reset(rhport);
-  usbd_control_reset();
+  usbd_control_reset(rhport);
 }
 
 bool tud_task_event_ready(uint8_t rhport)
@@ -617,7 +617,7 @@ void tud_task_ext(uint8_t rhport, uint32_t timeout_ms, bool in_isr)
 // Helper to invoke class driver control request handler
 static bool invoke_class_control(uint8_t rhport, usbd_class_driver_t const * driver, tusb_control_request_t const * request)
 {
-  usbd_control_set_complete_callback(driver->control_xfer_cb);
+    usbd_control_set_complete_callback(rhport, driver->control_xfer_cb);
   TU_LOG(USBD_DBG, "  %s control request\r\n", driver->name);
   return driver->control_xfer_cb(rhport, CONTROL_STAGE_SETUP, request);
 }
@@ -626,7 +626,7 @@ static bool invoke_class_control(uint8_t rhport, usbd_class_driver_t const * dri
 // return false will cause its caller to stall control endpoint
 static bool process_control_request(uint8_t rhport, tusb_control_request_t const * p_request)
 {
-  usbd_control_set_complete_callback(NULL);
+    usbd_control_set_complete_callback(rhport , NULL);
 
   TU_ASSERT(p_request->bmRequestType_bit.type < TUSB_REQ_TYPE_INVALID);
 
@@ -635,7 +635,7 @@ static bool process_control_request(uint8_t rhport, tusb_control_request_t const
   {
     TU_VERIFY(tud_vendor_control_xfer_cb);
 
-    usbd_control_set_complete_callback(tud_vendor_control_xfer_cb);
+    usbd_control_set_complete_callback(rhport, tud_vendor_control_xfer_cb);
     return tud_vendor_control_xfer_cb(rhport, CONTROL_STAGE_SETUP, p_request);
   }
 
@@ -676,7 +676,7 @@ static bool process_control_request(uint8_t rhport, tusb_control_request_t const
           // Depending on mcu, status phase could be sent either before or after changing device address,
           // or even require stack to not response with status at all
           // Therefore DCD must take full responsibility to response and include zlp status packet if needed.
-          usbd_control_set_request(p_request); // set request since DCD has no access to tud_control_status() API
+            usbd_control_set_request(rhport, p_request); // set request since DCD has no access to tud_control_status() API
           dcd_set_address(rhport, (uint8_t) p_request->wValue);
           // skip tud_control_status()
           _usbd_dev[rhport].addressed = 1;
@@ -783,7 +783,7 @@ static bool process_control_request(uint8_t rhport, tusb_control_request_t const
           case TUSB_REQ_GET_INTERFACE:
           case TUSB_REQ_SET_INTERFACE:
             // Clear complete callback if driver set since it can also stall the request.
-            usbd_control_set_complete_callback(NULL);
+              usbd_control_set_complete_callback(rhport ,NULL);
 
             if (TUSB_REQ_GET_INTERFACE == p_request->bRequest)
             {
@@ -852,7 +852,7 @@ static bool process_control_request(uint8_t rhport, tusb_control_request_t const
               // STD request must always be ACKed regardless of driver returned value
               // Also clear complete callback if driver set since it can also stall the request.
               (void) invoke_class_control(rhport, driver, p_request);
-              usbd_control_set_complete_callback(NULL);
+              usbd_control_set_complete_callback(rhport, NULL);
 
               // skip ZLP status if driver already did that
               if ( !_usbd_dev[rhport].ep_status[0][TUSB_DIR_IN].busy ) tud_control_status(rhport, p_request);

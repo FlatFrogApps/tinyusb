@@ -394,7 +394,7 @@ bool tud_inited(uint8_t rhport)
 bool tud_init (uint8_t rhport)
 {
   // skip if already initialized
-    TU_LOG(USBD_DBG, "try init port %u\r\n", rhport);
+
   if ( tud_inited(rhport) ) return true;
 
   TU_LOG(USBD_DBG, "USBD init on controller %u\r\n", rhport);

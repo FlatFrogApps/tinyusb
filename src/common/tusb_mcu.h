@@ -215,7 +215,7 @@
 #elif TU_CHECK_MCU(OPT_MCU_M484, OPT_MCU_M487)
   // FS has 11, HS has 12
   #define TUP_DCD_ENDPOINT_MAX    12
-  #define TUP_RHPORT_HIGHSPEED    1 // Port0 HS, Port1 FS
+  #define TUP_RHPORT_HIGHSPEED    0 // Port0 HS, Port1 FS
 //------------- Espressif -------------//
 #elif TU_CHECK_MCU(OPT_MCU_ESP32S2, OPT_MCU_ESP32S3)
   #define TUP_USBIP_DWC2

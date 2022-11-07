@@ -931,9 +931,10 @@ void dcd_int_handler(uint8_t rhport)
     }
     case USB_FS:
     {
-         uint32_t status = USBD->INTSTS & (enabled_irqs_FS | 0xffffff00);
+        uint32_t status = USBD->INTSTS & (enabled_irqs_FS | 0xffffff00);
+        uint32_t state = USBD->ATTR & 0xf;
         if (status & USBD_INTSTS_VBDETIF_Msk) {
-            uint32_t state = USBD->ATTR & 0xf;
+
             if (USBD->VBUSDET & USBD_VBUSDET_VBUSDET_Msk) {
                 /* USB connect */
                 USBD->ATTR |= USBD_ATTR_USBEN_Msk | USBD_ATTR_PHYEN_Msk;
@@ -941,14 +942,15 @@ void dcd_int_handler(uint8_t rhport)
                 /* USB disconnect */
                 USBD->ATTR &= ~USBD_ATTR_USBEN_Msk;
             }
-            if (status & USBD_INTSTS_BUSIF_Msk) {
-                /* USB bus reset */
-                USBD->ATTR |= USBD_ATTR_USBEN_Msk | USBD_ATTR_PHYEN_Msk;
+        }
+        if (status & USBD_INTSTS_BUSIF_Msk) {
+            /* USB bus reset */
+            USBD->ATTR |= USBD_ATTR_USBEN_Msk | USBD_ATTR_PHYEN_Msk;
 
-                bus_reset(rhport);
+            bus_reset(rhport);
 
-                dcd_event_bus_reset(rhport, TUSB_SPEED_FULL, true);
-            }
+            dcd_event_bus_reset(rhport, TUSB_SPEED_FULL, true);
+
             if (state & USBD_ATTR_SUSPEND_Msk) {
                 /* Enable USB but disable PHY */
                 USBD->ATTR &= ~USBD_ATTR_PHYEN_Msk;
@@ -958,9 +960,8 @@ void dcd_int_handler(uint8_t rhport)
                 /* Enable USB and enable PHY */
                 USBD->ATTR |= USBD_ATTR_USBEN_Msk | USBD_ATTR_PHYEN_Msk;
                 dcd_event_bus_signal(rhport, DCD_EVENT_RESUME, true);
-             }
-         }
-
+            }
+        }
         if (status & USBD_INTSTS_SETUP_Msk) {
             /* clear the data ready flag of control endpoints */
             USBD->EP[PERIPH_EPA].CFGP |= USBD_CFGP_CLRRDY_Msk;

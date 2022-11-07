@@ -675,6 +675,23 @@ bool dcd_edpt_xfer_fifo (uint8_t rhport, uint8_t ep_addr, tu_fifo_t * ff, uint16
 }
 #endif
 
+// Invoked when a control transfer's status stage is complete.
+// May help DCD to prepare for next control transfer, this API is optional.
+void dcd_edpt0_status_complete(uint8_t rhport, tusb_control_request_t const * request)
+{
+  (void) rhport;
+  if (request->bmRequestType_bit.recipient == TUSB_REQ_RCPT_DEVICE &&
+      request->bmRequestType_bit.type == TUSB_REQ_TYPE_STANDARD &&
+      request->bRequest == TUSB_REQ_SET_ADDRESS )
+  {
+    uint8_t const dev_addr = (uint8_t) request->wValue;
+
+    // Setting new address after the whole request is complete
+    USBD->FADDR = dev_addr;
+  }
+}
+
+
 void dcd_edpt_stall(uint8_t rhport, uint8_t ep_addr)
 {
   (void) rhport;

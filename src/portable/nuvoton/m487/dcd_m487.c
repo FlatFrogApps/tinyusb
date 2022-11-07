@@ -6,13 +6,6 @@
 #include "device/dcd.h"
 
 
-enum usb_port
-{
-    USB_HS = 0,
-    USB_FS,
-    tot_ports
-};
-
 /*-----------------NUC505 stuff--------------------------------*/
 
 /*

@@ -879,7 +879,7 @@ static bool process_control_request(uint8_t rhport, tusb_control_request_t const
 static bool process_set_config(uint8_t rhport, uint8_t cfg_num)
 {
   // index is cfg_num-1
-  tusb_desc_configuration_t const * desc_cfg = (tusb_desc_configuration_t const *) tud_descriptor_configuration_cb(cfg_num-1);
+    tusb_desc_configuration_t const * desc_cfg = (tusb_desc_configuration_t const *) tud_descriptor_configuration_cb(rhport, cfg_num-1);
   TU_ASSERT(desc_cfg != NULL && desc_cfg->bDescriptorType == TUSB_DESC_CONFIGURATION);
 
   // Parse configuration descriptor
@@ -1028,13 +1028,13 @@ static bool process_get_descriptor(uint8_t rhport, tusb_control_request_t const 
       if ( desc_type == TUSB_DESC_CONFIGURATION )
       {
         TU_LOG(USBD_DBG, " Configuration[%u]\r\n", desc_index);
-        desc_config = (uintptr_t) tud_descriptor_configuration_cb(desc_index);
+        desc_config = (uintptr_t) tud_descriptor_configuration_cb(rhport, desc_index);
       }else
       {
         // Host only request this after getting Device Qualifier descriptor
         TU_LOG(USBD_DBG, " Other Speed Configuration\r\n");
         TU_VERIFY( tud_descriptor_other_speed_configuration_cb );
-        desc_config = (uintptr_t) tud_descriptor_other_speed_configuration_cb(desc_index);
+        desc_config = (uintptr_t) tud_descriptor_other_speed_configuration_cb(rhport, desc_index);
       }
 
       TU_ASSERT(desc_config);

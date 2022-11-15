@@ -6,17 +6,15 @@
 #include "device/dcd.h"
 
 
-/*-----------------NUC505 stuff--------------------------------*/
-
 /*
  * The DMA functionality of the USBD peripheral does not appear to succeed with
  * transfer lengths that are longer (> 64 bytes) and are not a multiple of 4.
  * Keep disabled for now.
  */
-#define USE_DMA     1
+#define USE_DMA     0
 
 /* rather important info unfortunately not provided by device include files */
-#define HSUSBD_BUF_SIZE          (1024 * 12) /* how much USB buffer space there is */
+#define HSUSBD_BUF_SIZE          (4096) /* how much USB buffer space there is */
 #define HSUSBD_MAX_DMA_LEN     0x1000 /* max bytes that can be DMAed at one time */
 #define FSUSBD_BUF_SIZE          1024
 
@@ -848,6 +846,8 @@ void dcd_int_handler(uint8_t rhport)
                     HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_INTKIEN_Msk;
                 } else {
                     /* TinyUSB does its own fragmentation and ZLP for EP0; a transfer of zero means a ZLP */
+                    dcd_event_xfer_complete(0, 0x00, 0, XFER_RESULT_SUCCESS, true);
+
                     if (0 == ctrl_in_xfer.total_bytes) HSUSBD->CEPCTL = HSUSBD_CEPCTL_ZEROLEN_Msk;
 
                     HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_STSDONEIF_Msk;
@@ -872,7 +872,7 @@ void dcd_int_handler(uint8_t rhport)
 
 
         if (status & (HSUSBD_GINTSTS_EPAIF_Msk | HSUSBD_GINTSTS_EPBIF_Msk | HSUSBD_GINTSTS_EPCIF_Msk | HSUSBD_GINTSTS_EPDIF_Msk | HSUSBD_GINTSTS_EPEIF_Msk | HSUSBD_GINTSTS_EPFIF_Msk | HSUSBD_GINTSTS_EPGIF_Msk | HSUSBD_GINTSTS_EPHIF_Msk | HSUSBD_GINTSTS_EPIIF_Msk | HSUSBD_GINTSTS_EPJIF_Msk | HSUSBD_GINTSTS_EPKIF_Msk | HSUSBD_GINTSTS_EPLIF_Msk)) {
-            /* service PERIPH_CEP through PERIPH_EPL */
+            /* service PERIPH_EPA through PERIPH_EPL */
             enum ep_enum ep_index;
             uint32_t mask;
             struct xfer_ctl_t *xfer;

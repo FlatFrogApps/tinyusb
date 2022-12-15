@@ -790,11 +790,25 @@ void dcd_int_handler_HS(void)
     /* ISR for HighSpeed USB port (USB_HS) */
     const uint8_t rhport = USB_HS;
 
+    /* Acknowledge set flags as early as possible; then handle them later below...
+       (GINTSTS is Read-only, just reflecting if any of the lower-level interrupt status regs
+       have any of their flags set) */
     uint32_t status = HSUSBD->GINTSTS & HSUSBD->GINTEN;
+    uint32_t bus_state = HSUSBD->BUSINTSTS & HSUSBD->BUSINTEN;
+    uint32_t cep_state = HSUSBD->CEPINTSTS & HSUSBD->CEPINTEN;
+    uint32_t ep_state[PERIPH_MAX_EP];
+
+    HSUSBD->BUSINTSTS = bus_state;
+    // HSUSBD->CEPINTSTS = cep_state;  - FIXME: TBD (ok with all the priority-logic below) ?
+
+    for (enum ep_enum ep_index = PERIPH_EPA; ep_index < PERIPH_MAX_EP;  ep_index++) {
+        HSUSBD_EP_T *ep = &HSUSBD->EP[ep_index];
+        ep_state[ep_index] = ep->EPINTSTS & ep->EPINTEN;
+        ep->EPINTSTS = ep_state[ep_index];
+    }
 
     /* USB interrupt */
     if (status & HSUSBD_GINTSTS_USBIF_Msk) {
-        uint32_t bus_state = HSUSBD->BUSINTSTS & HSUSBD->BUSINTEN;
         if (bus_state & HSUSBD_BUSINTSTS_SOFIF_Msk) {
             /* Start-Of-Frame event */
             dcd_event_bus_signal(rhport, DCD_EVENT_SOF, true);
@@ -853,26 +867,29 @@ void dcd_int_handler_HS(void)
                 HSUSBD->PHYCTL &= ~HSUSBD_PHYCTL_DPPUEN_Msk;
             }
         }
-        HSUSBD->BUSINTSTS = bus_state & ALL_BUS_IRQS; // FIXME : bus_state already masked with only enabled INTEN flags ?
     }
 
     if (status & HSUSBD_GINTSTS_CEPIF_Msk) {
-        uint32_t cep_state = HSUSBD->CEPINTSTS & HSUSBD->CEPINTEN; // FIXME ?
 
         if (cep_state & HSUSBD_CEPINTSTS_SETUPPKIF_Msk) {
             /* get SETUP packet from USB buffer */
+            uint32_t temp;
             uint8_t setup_packet[8];
-            setup_packet[0] = (uint8_t)(HSUSBD->SETUP1_0 >> 0);
-            setup_packet[1] = (uint8_t)(HSUSBD->SETUP1_0 >> 8);
-            setup_packet[2] = (uint8_t)(HSUSBD->SETUP3_2 >> 0);
-            setup_packet[3] = (uint8_t)(HSUSBD->SETUP3_2 >> 8);
-            setup_packet[4] = (uint8_t)(HSUSBD->SETUP5_4 >> 0);
-            setup_packet[5] = (uint8_t)(HSUSBD->SETUP5_4 >> 8);
-            setup_packet[6] = (uint8_t)(HSUSBD->SETUP7_6 >> 0);
-            setup_packet[7] = (uint8_t)(HSUSBD->SETUP7_6 >> 8);
+            temp = HSUSBD->SETUP1_0;
+            setup_packet[0] = (uint8_t)(temp >> 0);
+            setup_packet[1] = (uint8_t)(temp >> 8);
+            temp = HSUSBD->SETUP3_2;
+            setup_packet[2] = (uint8_t)(temp >> 0);
+            setup_packet[3] = (uint8_t)(temp >> 8);
+            temp = HSUSBD->SETUP5_4;
+            setup_packet[4] = (uint8_t)(temp >> 0);
+            setup_packet[5] = (uint8_t)(temp >> 8);
+            temp = HSUSBD->SETUP7_6;
+            setup_packet[6] = (uint8_t)(temp >> 0);
+            setup_packet[7] = (uint8_t)(temp >> 8);
             dcd_event_setup_received(rhport, setup_packet, true);
         } else if (cep_state & HSUSBD_CEPINTSTS_INTKIF_Msk) {
-            HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_TXPKIF_Msk;
+            HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_TXPKIF_Msk;    // FIXME / TBD - (ideally all cep_state flags should already been cleared above)
 
             if (!(cep_state & HSUSBD_CEPINTSTS_STSDONEIF_Msk)) {
                 HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_TXPKIEN_Msk; // FIXME ?
@@ -886,23 +903,23 @@ void dcd_int_handler_HS(void)
                 HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_TXPKIEN_Msk | HSUSBD_CEPINTEN_STSDONEIEN_Msk; // FIXME ?
             }
         } else if (cep_state & HSUSBD_CEPINTSTS_TXPKIF_Msk) {
-            HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_STSDONEIF_Msk;
-            HSUSBD_SET_CEP_STATE(HSUSBD_CEPCTL_NAKCLR);
+            HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_STSDONEIF_Msk;  // FIXME / TBD - (ideally all cep_state flags should already been cleared above)
+            HSUSBD_SET_CEP_STATE(HSUSBD_CEPCTL_NAKCLR);  // TBD: is this sufficient / correct place for Ctrl-EP flow ctrl ? Esp. reg. OUT transfers??
 
             /* alert TinyUSB that the EP0 IN transfer has finished */
             if ( (0 == ctrl_in_xfer.in_remaining_bytes) || (0 == ctrl_in_xfer.total_bytes) )
                 dcd_event_xfer_complete(rhport, 0x80, ctrl_in_xfer.total_bytes, XFER_RESULT_SUCCESS, true);
 
             if (ctrl_in_xfer.in_remaining_bytes) {
-                HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_INTKIF_Msk;
+                HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_INTKIF_Msk;  // FIXME / TBD - (ideally all cep_state flags should already been cleared above)
                 HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_INTKIEN_Msk; // FIXME ?
             } else {
                 /* TinyUSB does its own fragmentation and ZLP for EP0; a transfer of zero means a ZLP */
-                dcd_event_xfer_complete(rhport, 0x00, 0, XFER_RESULT_SUCCESS, true);
+                dcd_event_xfer_complete(rhport, 0x00, 0, XFER_RESULT_SUCCESS, true);  // FIXME / TBD : is EP port 0x00 correct here? Not 0x80 ?
 
                 if (0 == ctrl_in_xfer.total_bytes) HSUSBD->CEPCTL = HSUSBD_CEPCTL_ZEROLEN_Msk;
 
-                HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_STSDONEIF_Msk;
+                HSUSBD->CEPINTSTS = HSUSBD_CEPINTSTS_STSDONEIF_Msk;  // FIXME / TBD - (ideally all cep_state flags should already been cleared above)
                 HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_SETUPPKIEN_Msk | HSUSBD_CEPINTEN_STSDONEIEN_Msk; // FIXME ?
             }
         } else if (cep_state & HSUSBD_CEPINTSTS_STSDONEIF_Msk) {
@@ -917,9 +934,9 @@ void dcd_int_handler_HS(void)
 
             HSUSBD->CEPINTEN = HSUSBD_CEPINTEN_SETUPPKIEN_Msk; // FIXME ?
         }
-        HSUSBD->CEPINTSTS = cep_state;
+        HSUSBD->CEPINTSTS = cep_state;  // FIXME / TBD - (ideally all cep_state flags should already been cleared above)
 
-        return;
+//        return;  // FIXME / TBD : WHAT!? Really ???
     }
 
 
@@ -933,7 +950,6 @@ void dcd_int_handler_HS(void)
             if(status & mask) {
                 uint8_t const ep_addr = xfer->ep_addr;
                 bool const out_ep = !(ep_addr & TUSB_DIR_IN_MASK);
-                uint32_t ep_state = ep->EPINTSTS & ep->EPINTEN;
 
                 if (out_ep) {
 #if USE_DMA
@@ -959,16 +975,15 @@ void dcd_int_handler_HS(void)
                     }
 #endif
 
-                } else if (ep_state & HSUSBD_EPINTSTS_BUFEMPTYIF_Msk) {
+                } else if (ep_state[ep_index] & HSUSBD_EPINTSTS_BUFEMPTYIF_Msk) {
                     /* send any remaining data */
                     dcd_userEP_in_xfer(xfer, ep);
-                } else if (ep_state & HSUSBD_EPINTSTS_TXPKIF_Msk) {
+                } else if (ep_state[ep_index] & HSUSBD_EPINTSTS_TXPKIF_Msk) {
                     /* alert TinyUSB that we've finished */
                     dcd_event_xfer_complete(rhport, ep_addr, xfer->total_bytes, XFER_RESULT_SUCCESS, true);
                     ep->EPINTEN = 0;
                 }
-
-                ep->EPINTSTS = ep_state;
+                // (EPINTSTS already cleared early at start of ISR)
             }
         }
     }

@@ -622,7 +622,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                 while (total_bytes < HSUSBD->CEPRXCNT);
                 for (int count = 0; count < total_bytes; count++)
                     *buffer++ = HSUSBD->CEPDAT_BYTE;
-                dcd_event_xfer_complete(0, ep_addr, total_bytes, XFER_RESULT_SUCCESS, true);
+                dcd_event_xfer_complete(rhport, ep_addr, total_bytes, XFER_RESULT_SUCCESS, true);
             }
         } else {
             /* mine the data for the information we need */

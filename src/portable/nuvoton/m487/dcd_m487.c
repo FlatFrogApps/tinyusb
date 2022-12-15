@@ -1093,14 +1093,13 @@ void dcd_int_handler_FS(void)
 
 void dcd_disconnect(uint8_t rhport)
 {
-  (void) rhport;
-  usb_detach(rhport);
+    bus_reset(rhport);
+    usb_detach(rhport);
 }
 
 void dcd_connect(uint8_t rhport)
 {
-  (void) rhport;
-  usb_attach(rhport);
+    usb_attach(rhport);
 }
 
 void dcd_sof_enable(uint8_t rhport, bool en)

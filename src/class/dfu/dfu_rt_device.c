@@ -101,7 +101,7 @@ bool dfu_rtd_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_request
     {
       TU_LOG2("  DFU RT Request: DETACH\r\n");
       tud_control_status(rhport, request);
-      tud_dfu_runtime_reboot_to_dfu_cb();
+      tud_dfu_runtime_reboot_to_dfu_cb(rhport);
     }
     break;
 

@@ -247,7 +247,7 @@ bool dfu_moded_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_reque
         }
         else if ( stage == CONTROL_STAGE_ACK )
         {
-          if ( tud_dfu_detach_cb ) tud_dfu_detach_cb();
+          if ( tud_dfu_detach_cb ) tud_dfu_detach_cb(rhport);
         }
       break;
 

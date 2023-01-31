@@ -125,7 +125,7 @@ static inline void board_delay(uint32_t ms)
   {
     #if CFG_TUD_ENABLED
     // take chance to run usb background
-    tud_task();
+    tud_task(0);
     #endif
   }
 }

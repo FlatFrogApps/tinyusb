@@ -35,6 +35,8 @@
 #include "device/usbd.h"
 #include "device/usbd_pvt.h"
 
+#include <assert.h>
+
 //--------------------------------------------------------------------+
 // USBD Configuration
 //--------------------------------------------------------------------+
@@ -44,6 +46,11 @@
 
 #ifndef CFG_TUD_TASK_QUEUE_SZ
   #define CFG_TUD_TASK_QUEUE_SZ   16
+#endif
+
+// Debug hack, does not belong here
+#ifndef BOARD_TUD_RHPORTS_MAX
+#define BOARD_TUD_RHPORTS_MAX 2
 #endif
 
 //--------------------------------------------------------------------+
@@ -76,7 +83,7 @@ typedef struct
 
 }usbd_device_t;
 
-#if (CFG_TUSB_MCU == OPT_MCU_M487) || (CFG_TUSB_MCU == OPT_MCU_M484)
+#if (CFG_TUSB_MCU == OPT_MCU_M487) || (CFG_TUSB_MCU == OPT_MCU_M484) || (CFG_TUSB_MCU == OPT_MCU_NUM487)
 static usbd_device_t _usbd_dev[BOARD_TUD_RHPORTS_MAX];
 #else
 //static uint8_t usbd_device_max = 0;
@@ -271,7 +278,7 @@ static inline usbd_class_driver_t const * get_driver(uint8_t drvid)
 //--------------------------------------------------------------------+
 
 enum { RHPORT_INVALID = 0xFFu };
-#if (CFG_TUSB_MCU == OPT_MCU_M487) || (CFG_TUSB_MCU == OPT_MCU_M484)
+#if (CFG_TUSB_MCU == OPT_MCU_M487) || (CFG_TUSB_MCU == OPT_MCU_M484) || (CFG_TUSB_MCU == OPT_MCU_NUM487)
 static uint8_t _usbd_rhport[BOARD_TUD_RHPORTS_MAX] = {RHPORT_INVALID, RHPORT_INVALID};
 #else
 static uint8_t _usbd_rhport[BOARD_TUD_RHPORTS_MAX] = {RHPORT_INVALID};
@@ -341,26 +348,33 @@ void usbd_driver_print_control_complete_name(usbd_control_xfer_cb_t callback)
 //--------------------------------------------------------------------+
 tusb_speed_t tud_speed_get(uint8_t rhport)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
   return (tusb_speed_t) _usbd_dev[rhport].speed;
 }
 
 bool tud_connected(uint8_t rhport)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
   return _usbd_dev[rhport].connected;
 }
 
 bool tud_mounted(uint8_t rhport)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
   return _usbd_dev[rhport].cfg_num ? true : false;
 }
 
 bool tud_suspended(uint8_t rhport)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
   return _usbd_dev[rhport].suspended;
 }
 
 bool tud_remote_wakeup(uint8_t rhport)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
+  // skip if already initialized
+
   // only wake up host if this feature is supported and enabled and we are suspended
   TU_VERIFY (_usbd_dev[rhport].suspended && _usbd_dev[rhport].remote_wakeup_support && _usbd_dev[rhport].remote_wakeup_en );
   dcd_remote_wakeup(_usbd_rhport[rhport]);
@@ -369,14 +383,18 @@ bool tud_remote_wakeup(uint8_t rhport)
 
 bool tud_disconnect(uint8_t rhport)
 {
-    TU_VERIFY(dcd_disconnect);
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
+
+  TU_VERIFY(dcd_disconnect);
   dcd_disconnect(_usbd_rhport[rhport]);
   return true;
 }
 
 bool tud_connect(uint8_t rhport)
 {
-    TU_VERIFY(dcd_connect);
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
+
+  TU_VERIFY(dcd_connect);
   dcd_connect(_usbd_rhport[rhport]);
   return true;
 }
@@ -387,12 +405,13 @@ bool tud_connect(uint8_t rhport)
 
 bool tud_inited(uint8_t rhport)
 {
-    TU_ASSERT(!(rhport > (BOARD_TUD_RHPORTS_MAX - 1)));
+  TU_ASSERT(!(rhport > (BOARD_TUD_RHPORTS_MAX - 1)));
   return _usbd_rhport[rhport] != RHPORT_INVALID;
 }
 
 bool tud_init (uint8_t rhport)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
   // skip if already initialized
 
   if ( tud_inited(rhport) ) return true;
@@ -438,6 +457,8 @@ bool tud_init (uint8_t rhport)
 
 static void configuration_reset(uint8_t rhport)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
+
   for ( uint8_t i = 0; i < TOTAL_DRIVER_COUNT; i++ )
   {
     usbd_class_driver_t const * driver = get_driver(i);
@@ -485,6 +506,7 @@ bool tud_task_event_ready(uint8_t rhport)
 void tud_task_ext(uint8_t rhport, uint32_t timeout_ms, bool in_isr)
 {
   (void) in_isr; // not implemented yet
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
 
   // Skip if stack is not initialized
   if ( !tusb_inited(rhport) ) return;
@@ -626,7 +648,9 @@ static bool invoke_class_control(uint8_t rhport, usbd_class_driver_t const * dri
 // return false will cause its caller to stall control endpoint
 static bool process_control_request(uint8_t rhport, tusb_control_request_t const * p_request)
 {
-    usbd_control_set_complete_callback(rhport , NULL);
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
+
+  usbd_control_set_complete_callback(rhport , NULL);
 
   TU_ASSERT(p_request->bmRequestType_bit.type < TUSB_REQ_TYPE_INVALID);
 
@@ -878,6 +902,8 @@ static bool process_control_request(uint8_t rhport, tusb_control_request_t const
 // This function parse configuration descriptor & open drivers accordingly
 static bool process_set_config(uint8_t rhport, uint8_t cfg_num)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
+
   // index is cfg_num-1
     tusb_desc_configuration_t const * desc_cfg = (tusb_desc_configuration_t const *) tud_descriptor_configuration_cb(rhport, cfg_num-1);
   TU_ASSERT(desc_cfg != NULL && desc_cfg->bDescriptorType == TUSB_DESC_CONFIGURATION);
@@ -976,6 +1002,8 @@ static bool process_get_descriptor(uint8_t rhport, tusb_control_request_t const 
 {
   tusb_desc_type_t const desc_type = (tusb_desc_type_t) tu_u16_high(p_request->wValue);
   uint8_t const desc_index = tu_u16_low( p_request->wValue );
+
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
 
   switch(desc_type)
   {
@@ -1208,6 +1236,8 @@ void usbd_defer_func(osal_task_func_t func, void* param, bool in_isr)
 
 bool usbd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
+
   rhport = _usbd_rhport[rhport];
 
   TU_ASSERT(tu_edpt_number(desc_ep->bEndpointAddress) < CFG_TUD_ENDPPOINT_MAX);
@@ -1218,7 +1248,7 @@ bool usbd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
 
 bool usbd_edpt_claim(uint8_t rhport, uint8_t ep_addr)
 {
-  (void) rhport;
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
 
   // TODO add this check later, also make sure we don't starve an out endpoint while suspending
   // TU_VERIFY(tud_ready());
@@ -1236,7 +1266,7 @@ bool usbd_edpt_claim(uint8_t rhport, uint8_t ep_addr)
 
 bool usbd_edpt_release(uint8_t rhport, uint8_t ep_addr)
 {
-  (void) rhport;
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
 
   uint8_t const epnum       = tu_edpt_number(ep_addr);
   uint8_t const dir         = tu_edpt_dir(ep_addr);
@@ -1251,6 +1281,8 @@ bool usbd_edpt_release(uint8_t rhport, uint8_t ep_addr)
 
 bool usbd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t total_bytes)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
+
   rhport = _usbd_rhport[rhport];
 
   uint8_t const epnum = tu_edpt_number(ep_addr);
@@ -1288,6 +1320,8 @@ bool usbd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t 
 // into the USB buffer!
 bool usbd_edpt_xfer_fifo(uint8_t rhport, uint8_t ep_addr, tu_fifo_t * ff, uint16_t total_bytes)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
+
   rhport = _usbd_rhport[rhport];
 
   uint8_t const epnum = tu_edpt_number(ep_addr);
@@ -1319,7 +1353,7 @@ bool usbd_edpt_xfer_fifo(uint8_t rhport, uint8_t ep_addr, tu_fifo_t * ff, uint16
 
 bool usbd_edpt_busy(uint8_t rhport, uint8_t ep_addr)
 {
-  (void) rhport;
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
 
   uint8_t const epnum = tu_edpt_number(ep_addr);
   uint8_t const dir   = tu_edpt_dir(ep_addr);
@@ -1329,6 +1363,8 @@ bool usbd_edpt_busy(uint8_t rhport, uint8_t ep_addr)
 
 void usbd_edpt_stall(uint8_t rhport, uint8_t ep_addr)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
+
   rhport = _usbd_rhport[rhport];
 
   uint8_t const epnum = tu_edpt_number(ep_addr);
@@ -1346,6 +1382,8 @@ void usbd_edpt_stall(uint8_t rhport, uint8_t ep_addr)
 
 void usbd_edpt_clear_stall(uint8_t rhport, uint8_t ep_addr)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
+
   rhport = _usbd_rhport[rhport];
 
   uint8_t const epnum = tu_edpt_number(ep_addr);
@@ -1363,7 +1401,7 @@ void usbd_edpt_clear_stall(uint8_t rhport, uint8_t ep_addr)
 
 bool usbd_edpt_stalled(uint8_t rhport, uint8_t ep_addr)
 {
-  (void) rhport;
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
 
   uint8_t const epnum = tu_edpt_number(ep_addr);
   uint8_t const dir   = tu_edpt_dir(ep_addr);
@@ -1379,6 +1417,7 @@ bool usbd_edpt_stalled(uint8_t rhport, uint8_t ep_addr)
  */
 void usbd_edpt_close(uint8_t rhport, uint8_t ep_addr)
 {
+  assert(rhport < BOARD_TUD_RHPORTS_MAX);
   rhport = _usbd_rhport[rhport];
 
   TU_ASSERT(dcd_edpt_close, /**/);

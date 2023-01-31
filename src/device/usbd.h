@@ -81,7 +81,7 @@ bool tud_suspended(uint8_t rhport);
 
 // Check if device is ready to transfer
 TU_ATTR_ALWAYS_INLINE static inline
-bool tud_ready()
+bool tud_ready(void)
 {
     return tud_mounted(0) && !tud_suspended(0); //hardcode for now to make it build. is not used
 }

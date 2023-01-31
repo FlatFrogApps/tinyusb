@@ -38,11 +38,13 @@
   *
   */
 
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "bsp/board.h"
+#include "dfu.h"
 #include "tusb.h"
 
 //--------------------------------------------------------------------+
@@ -75,11 +77,16 @@ int main(void)
   board_init();
 
   // init device stack on configured roothub port
-  tud_init(BOARD_TUD_RHPORT);
+
+  //tud_init(BOARD_TUD_RHPORT);
+  tud_init(0);
+  tud_init(1);
+
 
   while (1)
   {
-    tud_task(); // tinyusb device task
+    //tud_task(BOARD_TUD_RHPORT); // tinyusb device task
+    tud_task(0); // tinyusb device task
     led_blinking_task();
   }
 
@@ -93,12 +100,14 @@ int main(void)
 // Invoked when device is mounted
 void tud_mount_cb(void)
 {
+  printf("Mounted\n");
   blink_interval_ms = BLINK_MOUNTED;
 }
 
 // Invoked when device is unmounted
 void tud_umount_cb(void)
 {
+  printf("Umounted\n");
   blink_interval_ms = BLINK_NOT_MOUNTED;
 }
 
@@ -197,8 +206,9 @@ void tud_dfu_abort_cb(uint8_t alt)
 }
 
 // Invoked when a DFU_DETACH request is received
-void tud_dfu_detach_cb(void)
+void tud_dfu_detach_cb(uint8_t rhport)
 {
+  (void) rhport;
   printf("Host detach, we should probably reboot\r\n");
 }
 

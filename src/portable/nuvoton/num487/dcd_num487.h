@@ -5,9 +5,6 @@
 
 #include "device/dcd.h"
 
-// TODO: This should move to build config
-#define USE_FS_PORT 1
-#define USE_HS_PORT 1
 
 #ifndef USE_FS_PORT
 #define USE_FS_PORT 0
@@ -34,6 +31,8 @@ enum ep_enum
   PERIPH_MAX_EP,
 };
 
+
+//FIXME does not work with ghost/m48x way of defineing which port
 enum portno
 {
 #if USE_FS_PORT == 1

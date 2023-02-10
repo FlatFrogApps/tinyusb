@@ -29,9 +29,10 @@
 #if CFG_TUSB_MCU == OPT_MCU_NUM487
 
 #include "device/dcd.h"
+#include "NuMicro.h"
+#include "usb_device.h"
 
-#include "numaker_sdk_m478.h"
-#include "nuv_usbd.h"
+
 #include "dcd_num487.h"
 
 //--------------------------------------------------------------------+

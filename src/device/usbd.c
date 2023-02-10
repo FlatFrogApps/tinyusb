@@ -1182,12 +1182,12 @@ void usbd_int_set(bool enabled)
 {
   if (enabled)
   {
-      //dcd_int_enable(_usbd_rhport[0]);
-      dcd_int_enable(_usbd_rhport[1]);
+      dcd_int_enable(_usbd_rhport[0]);
+      //dcd_int_enable(_usbd_rhport[1]);
   }else
   {
-      //dcd_int_disable(_usbd_rhport[0]);
-    dcd_int_disable(_usbd_rhport[1]);
+      dcd_int_disable(_usbd_rhport[0]);
+      //dcd_int_disable(_usbd_rhport[1]);
   }
 }
 

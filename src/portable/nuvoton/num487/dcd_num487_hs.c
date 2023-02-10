@@ -31,12 +31,12 @@
 
 #include "device/dcd.h"
 
-
-#include "numaker_sdk_m478.h"
-#include "nuv_usbd.h"
+#include "NuMicro.h"
+#include "hsusbd.h"
+#include "usb_device.h"
 #include "dcd_num487.h"
 
-#include "hsusbd.h"
+
 
 /*
  * The DMA functionality of the USBD peripheral does not appear to succeed with
